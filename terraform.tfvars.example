@@ -1,0 +1,12 @@
+shared_vpc_host_project_id = "<network project>"
+environments = {
+  prod = {
+    service_project_id = "<prod project>"
+  },
+  test = {
+    service_project_id = "<test project>"
+  },
+  dev = {
+    service_project_id = "<dev project>"
+  },
+}

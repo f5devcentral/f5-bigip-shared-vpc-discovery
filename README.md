@@ -1,7 +1,173 @@
-# repo-template
+# BIG-IP Service Discovery with multiple GCP projects
+
+## Overview
+
+This repo can be used to show how BIG-IP AS3
+[Service Discovery](https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/declarations/discovery.html)
+can locate resources that are deployed in GCP projects other than the project
+where BIG-IP is deployed. This is a common scenario when BIG-IP is deployed to a
+Shared VPC Host project, and must dynamically populate server pools with
+resources deployed to Shared VPC Service projects.
+
+![images/shared.png](images/shared.png "Shared VPC example")
+
+> Figure 1: Shared VPC deployment
+
+## Getting Started
+
+<!-- spell-checker: ignore tfvars -->
+1. Create a tfvars file; `terraform.tfvars.example` can be used as a starting point
+
+   ```hcl
+   shared_vpc_host_project_id = "<network project>"
+   environments = {
+     prod = {
+       service_project_id = "<prod project>"
+     },
+     test = {
+       service_project_id = "<test project>"
+     },
+     dev = {
+       service_project_id = "<dev project>"
+     },
+   }
+   ```
+
+2. Create the resources through Terraform
+
+   ```shell
+   terraform init
+   terraform apply -auto-approve
+   ```
+
+   ```text
+   ...
+   Apply complete! Resources: 58 added, 0 changed, 0 destroyed.
+
+   Outputs:
+
+   external = tolist([
+     "35.233.140.249",
+   ])
+   management = tolist([
+     "35.230.126.99",
+   ])
+   ```
+
+3. Clean-up
+
+   When testing is complete, the resources can be destroyed through Terraform.
+
+   ```shell
+   terraform destroy -auto-approve
+   ```
+
+## Usage
+
+Running Terraform and allowing BIG-IP to complete on-boarding takes a few minutes;
+I suggest that you wait 8-10 minutes before performing these steps.
+
+The AS3 declaration adds an [Endpoint_Policy](https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/refguide/schema-reference.html#endpoint-policy) that directs incoming HTTP requests to a backend pool by matching the request
+query string against the environment names.
+
+E.g. Figure 2 shows the content from DEV environment by using a query string
+of `?site=dev` to the BIG-IP external public address.
+
+![dev-site.png](images/dev-site.png)
+
+> Figure 2: Gorgeous content served from DEV pool
+
+### Pools and service discovery
+
+This repo deploys BIG-IP with an [AS3 Declaration](https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/) that creates virtual services and pools
+that BIG-IP will use to satisfy incoming requests. The pools are defined without
+traditional members; instead [Service Discovery](https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/declarations/discovery.html) is enabled
+to find matching VMs based on `labels`.
+
+```json
+"dev_pool": {
+  "class": "Pool",
+  "monitors": [
+    "http"
+  ],
+  "members": [
+    {
+      "servicePort": 80,
+      "addressDiscovery": "gce",
+      "updateInterval": 5,
+      "tagKey": "f5-service-discovery",
+      "tagValue": "shared-vpc-sd-dev",
+      "addressRealm": "private",
+      "region": "us-west1",
+      "encodedCredentials": "REDACTED BASE64 SA JSON"
+    }
+  ]
+}
+```
+
+> NOTE: service discovery uses the field names `tagKey` and `tagLabel` for
+> consistency across cloud providers; in GCP these must correlate to VM *label*
+> key and value, not network tags.
+
+![big-ip-pools.png](images/big-ip-pools.png)
+
+> Figure 3: BIG-IP virtual service pools declared by AS3
+
+So, to recap, the pools are statically declared in AS3...
+
+![dev-pool-populated.png](images/dev-pool-populated.png)
+
+> Figure 4: Members of DEV pool discovered by querying GCP Compute API
+
+but the membership of the pools comes from querying the GCP Compute API.
+
+#### How BIG-IP service discovery works on GCP
+
+![per-env-discovery.png](images/per-env-discovery.png)
+
+> Figure 5: BIG-IP queries Compute API for matching resources in Service project
+
+When Service Discovery is enabled on the BIG-IP it will periodically issue Google
+Compute API requests to find the current set of VMs that match the requested
+labels, and update the pool membership with the private addresses of those
+instances.
+
+![shared-vpc-discovery-audit-log.png](images/shared-vpc-discovery-audit-log.png)
+
+> Figure 6: GCP audit log showing API requests to get backend instances from Shared VPC Service projects
+
+If you enable `data read` auditing on the Compute API, the requests from BIG-IP
+can be monitored and reviewed in Cloud Operations Logging, as shown in Figure 6.
+
+## Support
+
+For support, please open a GitHub issue.  Note, the code in this repository is community supported and is not supported by F5 Networks.  For a complete list of supported projects please reference [SUPPORT.md](SUPPORT.md).
+
+## Community Code of Conduct
+
+Please refer to the [F5 DevCentral Community Code of Conduct](code_of_conduct.md).
+
+## License
+
+[Apache License 2.0](LICENSE)
+
+## Copyright
+
+Copyright 2021 F5 Networks, Inc.
+
+### F5 Networks Contributor License Agreement
+
+Before you start contributing to any project sponsored by F5 Networks, Inc. (F5) on GitHub, you will need to sign a Contributor License Agreement (CLA).
+
+If you are signing as an individual, we recommend that you talk to your employer (if applicable) before signing the CLA since some employment agreements may have restrictions on your contributions to other projects.
+Otherwise by submitting a CLA you represent that you are legally entitled to grant the licenses recited therein.
+
+If your employer has rights to intellectual property that you create, such as your contributions, you represent that you have received permission to make contributions on behalf of that employer, that your employer has waived such rights for your contributions, or that your employer has executed a separate CLA with F5.
+
+If you are signing on behalf of a company, you represent that you are legally entitled to grant the license recited therein.
+You represent further that each employee of the entity that submits contributions is authorized to submit such contributions on behalf of the entity pursuant to the CLA.
 
 <!-- spell-checker: ignore markdownlint -->
-
 <!-- markdownlint-disable no-inline-html -->
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 ## Requirements
